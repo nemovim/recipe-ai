@@ -4,7 +4,7 @@
 	export let data;
 	export let form;
 
-	const ingredientIdMap = new Map(JSON.parse(data.ingredients).map((data) => data.split(',')));
+	const ingredientIdMap = new Map(JSON.parse(data.ingredients));
 
 	let originalHTML = '';
 	let recipeId = 6900000;

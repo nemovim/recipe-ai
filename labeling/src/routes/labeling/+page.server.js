@@ -1,8 +1,8 @@
 import Label from '$lib/label.js';
 
 export async function load(event) {
-    let ingFile = await event.fetch('ingredients.csv');
-    let ingredients = (await ingFile.text()).split('\r\n');
+    let ingFile = await event.fetch('https://github.com/nemovim/recipe-ai/blob/main/labeling/static/ingredients.csv');
+    let ingredients = (await ingFile.json()).payload.blob.csv
 	return {
 		ingredients: JSON.stringify(ingredients)
 	};
