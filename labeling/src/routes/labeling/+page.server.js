@@ -1,12 +1,8 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import Label from '$lib/label.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-export async function load() {
-	let ingredients = fs.readFileSync(path.join(__dirname, 'ingredients.csv'), 'utf-8').split('\r\n');
+export async function load(event) {
+    let ingFile = await event.fetch('ingredients.csv');
+    let ingredients = (await ingFile.text()).split('\r\n');
 	return {
 		ingredients: JSON.stringify(ingredients)
 	};
