@@ -1,0 +1,9 @@
+/Include
+/share
+/Scripts
+/Lib
+pyvenv.cfg
+/data-crawling/frequencyData
+/data-crawling/ingredientsData
+/data-crawling/recipeData
+*.zip
