@@ -18,26 +18,30 @@
 	let mainImg = '';
 
 	let isLoading = false;
-	async function getRecipe(id) {
+	async function getRecipe(id, delta) {
+
+		id += delta;
+
 		isLoading = true;
+
+		recipeTitle = '';
+		ingredientNameArr = [];
+		ingredientIdArr = [];
+		mainImg = '';
 
 		recipeId = id;
 
-		let res = await fetch(`/api?id=${id}`);
+		let res = await fetch(`/api/get?id=${id}`);
 		let data = JSON.parse(await res.text());
 
 		originalHTML = data.html;
 		recipeLabel = data.label;
 
 		if (originalHTML === '' || originalHTML === null) {
-			await getRecipe(id + 1);
+			await getRecipe(id, delta);
 		} else {
 			if (!preview()) {
-				recipeTitle = '';
-				ingredientNameArr = [];
-				ingredientIdArr = [];
-				mainImg = '';
-				await getRecipe(id + 1);
+				await getRecipe(id, delta);
 			}
 
 			isLoading = false;
@@ -82,7 +86,7 @@
 
 	async function startLabeling() {
 		isStarted = true;
-		await getRecipe(startRecipeId);
+		await getRecipe(startRecipeId-1, +1);
 	}
 
 	function onEnter(e) {
@@ -117,8 +121,6 @@
 			typeArr.push('condiment');
 		}
 
-		console.log(typeArr)
-
 		return typeArr;
 	}
 
@@ -129,6 +131,20 @@
 			await startLabeling();
 		}
 	});
+
+	function nextRecipe() {
+		getRecipe(recipeId, +1);
+	}
+
+	function previousRecipe() {
+		getRecipe(recipeId, -1);
+	}
+
+	async function deleteRecipe(id) {
+		let res = await fetch(`/api/delete?id=${id}`);
+		// let data = JSON.parse(await res.json());
+		await getRecipe(recipeId, +1);
+	}
 </script>
 
 <h1 id="title">Welcome to the <span style="color:red">HELL</span> of labeling!</h1>
@@ -178,9 +194,14 @@
 						style="display:none"
 					/>
 				</div>
-				<button>확인</button>
+				<button>저장</button>
 			</form>
-			<button on:click={stopLabeling}>취소</button>
+			<div id="btnDiv">
+				<button on:click={stopLabeling}>취소</button>
+				<button on:click={previousRecipe}>이전</button>
+				<button on:click={nextRecipe}>다음</button>
+				<button on:click={deleteRecipe(recipeId)}>삭제</button>
+			</div>
 		{/if}
 	</div>
 
@@ -274,6 +295,11 @@
 
 	#originalDiv {
 		display: none;
+	}
+
+	#btnDiv {
+		display: flex;
+		justify-content: space-between;
 	}
 
 	:global(.main)::after {
