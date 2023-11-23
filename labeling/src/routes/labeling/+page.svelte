@@ -1,114 +1,116 @@
 <script>
 	import { onMount } from 'svelte';
+	import { parse } from 'node-html-parser';
 
 	export let data;
-	export let form;
 
 	const ingredientIdMap = new Map(JSON.parse(data.ingredients));
 	const changedIdMap = new Map(JSON.parse(data.idMappings));
 
-	let originalHTML = '';
-	let recipeId = 6900000;
-	let recipeLabel = {};
-	let ingredientType = '0';
-	let ingredientIdArr = [];
+	let startRecipeId = 6900000;
+	const loadCnt = 5;
 
+	let currentRecipeId = 6900000;
+	let currentIngredientType = '0';
+
+	let showRecipeId;
+	let recipeLabel;
 	let recipeTitle = '';
+	let recipeImg = '';
+	let ingredientIdArr = [];
 	let ingredientNameArr = [];
-	let mainImg = '';
+	let checkboxArr = [];
 
 	let isLoading = false;
-	async function getRecipe(id, delta) {
 
-		id += delta;
+	let recipeDataMap = new Map();
 
-		isLoading = true;
+	async function fillRecipeDataMap(startId, endId) {
+		let taskIdArr = [];
+		let taskArr = [];
 
-		recipeTitle = '';
-		ingredientNameArr = [];
-		ingredientIdArr = [];
-		mainImg = '';
+		for (let id = startId; id <= endId; id++) {
+			if (!recipeDataMap.has(id)) {
+				taskIdArr.push(id);
+				taskArr.push(
+					new Promise((resolve) => {
+						resolve(loadRecipe(id));
+					})
+				);
+			}
+		}
 
-		recipeId = id;
+		let result = await Promise.allSettled(taskArr);
 
+		result.forEach((recipeData, i) => {
+			recipeDataMap.set(taskIdArr[i], recipeData.value);
+		});
+	}
+
+	async function loadRecipe(id) {
 		let res = await fetch(`/api/get?id=${id}`);
 		let data = JSON.parse(await res.text());
 
-		originalHTML = data.html;
-		recipeLabel = data.label;
-
-		if (originalHTML === '' || originalHTML === null) {
-			await getRecipe(id, delta);
+		if (data.html === '' || data.html === null) {
+			return null;
 		} else {
-			if (!preview()) {
-				await getRecipe(id, delta);
-			}
+			let extractedData = await extractData(data.html);
 
-			isLoading = false;
+			if (extractedData === null) {
+				return null;
+			} else {
+				return {
+					id: id,
+					label: data.label,
+					...extractedData
+				};
+			}
 		}
 	}
 
-	function preview() {
-		document.getElementById('originalDiv').innerHTML = originalHTML;
+	async function extractData(html) {
+		let parsedHTML = parse(html);
 
-		recipeTitle = document.querySelector('.view2_summary > h3').outerHTML;
+		let title = parsedHTML.querySelector('.view2_summary > h3').textContent;
 
-		let ingredientHTMLArr = document.querySelectorAll(
-			'#divConfirmedMaterialArea li > a:first-child'
-		);
+		let ingredientHTMLArr = parsedHTML.querySelectorAll('#divConfirmedMaterialArea ul > a');
 
-		ingredientHTMLArr.forEach((a, b) => {
-			ingredientNameArr.push(a.outerHTML);
-			ingredientIdArr.push(a.getAttribute('href').split("'")[1]);
+		let _ingredientNameArr = [];
+		let _ingredientIdArr = [];
+
+		ingredientHTMLArr.forEach((ingredient, i) => {
+			_ingredientNameArr.push(ingredient.textContent.replaceAll('\n', '').trim().split('   ')[0]);
+			_ingredientIdArr.push(ingredient.getAttribute('href').split("'")[1]);
 		});
 
 		let ingredientIdSet = new Set(
-			ingredientIdArr.map((id) => {
+			_ingredientIdArr.map((id) => {
 				return changedIdMap.get(id);
 			})
 		);
 
 		if (ingredientIdSet.has(undefined)) {
-			return false;
+			return null;
 		}
 
-		ingredientIdArr = Array(...ingredientIdSet);
+		_ingredientIdArr = Array(...ingredientIdSet);
 
-		mainImg = document.getElementById('main_thumbs').outerHTML;
+		let img = parsedHTML.querySelector('#main_thumbs').toString();
 
-		ingredientNameArr = [...ingredientNameArr];
-
-		return true;
-	}
-
-	let isStarted = false;
-	let startRecipeId = recipeId;
-
-	async function startLabeling() {
-		isStarted = true;
-		await getRecipe(startRecipeId-1, +1);
-	}
-
-	function onEnter(e) {
-		if (e.key === 'Enter') {
-			if (!isStarted) {
-				startLabeling();
-			}
-		}
-	}
-
-	function stopLabeling() {
-		isStarted = false;
-		recipeTitle = '';
-		ingredientNameArr = [];
-		ingredientIdArr = [];
-		mainImg = '';
+		return {
+			title,
+			ingId: _ingredientIdArr,
+			ingName: _ingredientNameArr,
+			img
+		};
 	}
 
 	function getTypeArr(ingredientId) {
 		if (recipeLabel === null) {
 			return '';
 		}
+
+		ingredientId = Number(ingredientId);
 
 		let typeArr = [];
 		if (recipeLabel.mainArr.indexOf(ingredientId) !== -1) {
@@ -124,68 +126,137 @@
 		return typeArr;
 	}
 
-	onMount(async () => {
-		if (form?.success) {
-			startRecipeId = form.nextId;
-			ingredientType = String(form.nextType);
-			await startLabeling();
+	async function getRecipe(id, delta) {
+		if (recipeDataMap.get(id) === undefined) {
+			await fillRecipeDataMap(id - loadCnt, id + loadCnt);
+			return await getRecipe(id, delta);
+		} else if (recipeDataMap.get(id) === null) {
+			return await getRecipe(id + delta, delta);
+		} else {
+			return recipeDataMap.get(id);
 		}
-	});
-
-	function nextRecipe() {
-		getRecipe(recipeId, +1);
 	}
 
-	function previousRecipe() {
-		getRecipe(recipeId, -1);
+	async function showRecipe(id, delta) {
+		let recipeData = await getRecipe(id, delta);
+
+		currentRecipeId = recipeData.id;
+		showRecipeId = recipeData.id;
+
+		recipeLabel = recipeData.label;
+		recipeTitle = recipeData.title;
+		ingredientIdArr = recipeData.ingId;
+		ingredientNameArr = recipeData.ingName;
+		recipeImg = recipeData.img;
+
+		checkboxArr = Array(ingredientIdArr.length).fill(false);
+	}
+
+	async function nextRecipe(id) {
+		isLoading = true;
+		await showRecipe(id + 1, +1);
+		isLoading = false;
+		fillRecipeDataMap(currentRecipeId - loadCnt, currentRecipeId + loadCnt);
+	}
+
+	async function previousRecipe(id) {
+		isLoading = true;
+		await showRecipe(id - 1, -1);
+		isLoading = false;
+		fillRecipeDataMap(currentRecipeId - loadCnt, currentRecipeId + loadCnt);
 	}
 
 	async function deleteRecipe(id) {
-		let res = await fetch(`/api/delete?id=${id}`);
-		// let data = JSON.parse(await res.json());
-		await getRecipe(recipeId, +1);
+		if (confirm('정말로 삭제하시겠습니까?')) {
+			isLoading = true;
+			await fetch(`/api/delete?id=${id}`);
+			recipeDataMap.set(id, null);
+			await nextRecipe(id);
+		}
 	}
+
+	async function changeRecipe(id) {
+		isLoading = true;
+		await fillRecipeDataMap(id - loadCnt, id + loadCnt);
+		await showRecipe(id, +1);
+		isLoading = false;
+	}
+
+	async function saveRecipe() {
+
+		let data = {
+			recipeId: currentRecipeId,
+			ingredientType: currentIngredientType,
+			ingredientIds: ingredientIdArr.join('/'),
+			checkbox: checkboxArr
+		}
+
+		fetch(`/api/set`, {
+			method: 'POST',
+			body: JSON.stringify(data),
+			headers: {
+				'Content-Type': 'application/json',
+			}
+		});
+
+		recipeDataMap.set(currentRecipeId, loadRecipe(currentRecipeId));
+
+		nextRecipe(currentRecipeId);
+	}
+
+	onMount(async () => {
+		isLoading = true;
+		await changeRecipe(startRecipeId);
+		isLoading = false;
+	});
 </script>
 
 <h1 id="title">Welcome to the <span style="color:red">HELL</span> of labeling!</h1>
 
 <section id="mainSection">
-	<div id="labelingDiv">
-		{#if !isStarted}
-			<input
-				id="recipeId"
-				type="number"
-				placeholder={recipeId}
-				bind:value={startRecipeId}
-				on:keydown={onEnter}
-			/>
-			<select bind:value={ingredientType} on:keydown={onEnter}>
-				<option value="0" selected>주재료</option>
-				<option value="1">조미료</option>
-				<option value="2">향신료</option>
-			</select>
-			<button on:click={startLabeling} on:keydown={onEnter}>시작하기</button>
-		{:else if isLoading}
-			<p><b>Loading...</b></p>
-		{:else}
-			<form method="post">
-				<p>라벨링하는 타입 (0: 주재료 / 1: 조미료 / 2: 향신료):</p>
-				<input type="number" readonly value={ingredientType} name="ingredientType" />
-				<p>라벨링하는 레시피 아이디:</p>
-				<input type="number" readonly value={recipeId} name="recipeId" />
+	{#if isLoading}
+		<p><b>Loading...</b></p>
+	{:else}
+			<div id="leftDiv">
+				<div id="haederDiv">
+					<p>라벨링하는 타입:</p>
+					<select bind:value={currentIngredientType} name="ingredientType">
+						<option value="0" selected>주재료</option>
+						<option value="1">조미료</option>
+						<option value="2">향신료</option>
+					</select>
+					<p>라벨링하는 레시피 아이디:</p>
+					<input type="number" bind:value={showRecipeId} name="recipeId" />
+					<button on:click={changeRecipe(showRecipeId)}>레시피 변경</button>
+				</div>
 				<hr />
-				<div class="ingredientsDiv">
-					{#each ingredientIdArr as ingredientId, i}
-						<div>
-							<label for="ingredient-{i}"
-								>{ingredientIdMap.get(ingredientId)}
-								{#each getTypeArr(Number(ingredientId)) as type}
-									<b class={type}></b>
-								{/each}
-							</label>
-							<input id="ingredient-{i}" name="ingredient-{ingredientId}" type="checkbox" />
-						</div>
-					{/each}
+				<div id="previewDiv">
+					<h1>{recipeTitle}</h1>
+					<div>
+						{#each ingredientNameArr as ingredientName}
+							<p>{ingredientName}</p>
+						{/each}
+					</div>
+					{@html recipeImg}
+				</div>
+			</div>
+
+			<div id="rightDiv">
+				<div id="ingredientsDiv">
+					<p>재료들:</p>
+					<div>
+						{#each ingredientIdArr as ingredientId, i}
+							<div>
+								<label for="ingredient-{i}"
+									>{ingredientIdMap.get(ingredientId)}
+									{#each getTypeArr(ingredientId) as type}
+										<b class={type}></b>
+									{/each}
+								</label>
+								<input id="ingredient-{i}" name="ingredient-{ingredientId}" type="checkbox" bind:checked={checkboxArr[i]}/>
+							</div>
+						{/each}
+					</div>
 					<input
 						type="text"
 						readonly
@@ -194,29 +265,16 @@
 						style="display:none"
 					/>
 				</div>
-				<button>저장</button>
-			</form>
-			<div id="btnDiv">
-				<button on:click={stopLabeling}>취소</button>
-				<button on:click={previousRecipe}>이전</button>
-				<button on:click={nextRecipe}>다음</button>
-				<button on:click={deleteRecipe(recipeId)}>삭제</button>
+
+				<div id="btnDiv">
+					<button on:click={saveRecipe}><b>저장</b></button>
+					<button on:click={previousRecipe(currentRecipeId)}>이전</button>
+					<button on:click={nextRecipe(currentRecipeId)}>다음</button>
+					<button on:click={deleteRecipe(currentRecipeId)}>삭제</button>
+				</div>
 			</div>
-		{/if}
-	</div>
-
-	<div id="previewDiv">
-		{@html recipeTitle}
-		<div class="ingredientsDiv">
-			{#each ingredientNameArr as ingredient}
-				<p>{@html ingredient}</p>
-			{/each}
-		</div>
-		{@html mainImg}
-	</div>
+	{/if}
 </section>
-
-<div id="originalDiv"></div>
 
 <style lang="scss">
 	* {
@@ -224,8 +282,8 @@
 	}
 
 	#title {
-		padding: 2rem;
-		font-size: 3rem;
+		padding: 1rem 2rem;
+		font-size: 2rem;
 
 		span {
 			font-size: 3rem;
@@ -236,61 +294,65 @@
 		background-color: white;
 		margin: 2rem;
 		margin-top: 0;
-		padding: 2rem;
+		padding: 1rem;
 		border: 0.2rem solid black;
 		display: flex;
-		justify-content: space-between;
 
-		#labelingDiv {
-			width: 50%;
+
+		#leftDiv {
 			padding: 1rem;
+			width: 35%;
 
-			form {
+			#headerDiv {
 				display: flex;
 				flex-direction: column;
 			}
 
-			div {
-				padding: 1rem;
+			hr {
+				margin: 1rem 0;
 			}
 
-			label {
-				border: solid 0.1rem black;
-				padding: 0.5rem;
-			}
+			#previewDiv {
+				div {
+					display: flex;
+					flex-wrap: wrap;
 
-			label:hover,
-			input {
-				cursor: pointer;
-				background-color: rgb(245, 245, 245);
-			}
+					p {
+						margin-right: 0.5rem;
+					}
+				}
 
-			button {
-				margin-top: 2rem;
+				:global(img) {
+					max-width: -webkit-fill-available;
+					max-height: 40vh;
+				}
 			}
 		}
 
-		#previewDiv {
-			width: 50%;
+		#rightDiv {
 			padding: 1rem;
+			width: 65%;
+			display: flex;
+			flex-direction: column;
 
-			:global(img) {
-				width: -webkit-fill-available;
+			#ingredientsDiv {
+				div {
+					display: flex;
+					flex-wrap: wrap;
+					margin: 1rem 0;
+
+					div {
+						margin-right: 1.5rem;
+						label {
+							display: inline-block;
+							border: solid 0.1rem black;
+							padding: 0.5rem;
+							margin-right: 0.5rem;
+						}
+					}
+				}
 			}
 		}
-	}
-
-	.ingredientsDiv {
-		display: flex;
-		flex-wrap: wrap;
-
-		* {
-			min-width: max-content;
-		}
-	}
-
-	hr {
-		margin: 2rem 0;
 	}
 
 	#originalDiv {
@@ -300,14 +362,24 @@
 	#btnDiv {
 		display: flex;
 		justify-content: space-between;
+
+		button {
+			width: 20%;
+		}
+	}
+
+	label:hover,
+	input:hover {
+		cursor: pointer;
+		background-color: rgb(245, 245, 245);
 	}
 
 	:global(.main)::after {
-		content: '주';
+		content: '메인';
 		background-color: rgb(230, 230, 255);
 	}
 	:global(.condiment)::after {
-		content: '조';
+		content: '맛';
 		background-color: rgb(255, 255, 200);
 	}
 	:global(.spice)::after {
