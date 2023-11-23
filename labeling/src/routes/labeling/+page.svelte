@@ -29,7 +29,7 @@
 		originalHTML = data.html;
 		recipeLabel = data.label;
 
-		if (originalHTML === '') {
+		if (originalHTML === '' || originalHTML === null) {
 			await getRecipe(id + 1);
 		} else {
 			if (!preview()) {
