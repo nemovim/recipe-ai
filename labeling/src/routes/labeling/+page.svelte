@@ -101,9 +101,9 @@
 		mainImg = '';
 	}
 
-	function getIngredientType(ingredientId) {
+	function getTypeArr(ingredientId) {
 		if (recipeLabel === null) {
-			return ''
+			return '';
 		}
 
 		let typeArr = [];
@@ -117,7 +117,9 @@
 			typeArr.push('condiment');
 		}
 
-		return typeArr.join(' ')
+		console.log(typeArr)
+
+		return typeArr;
 	}
 
 	onMount(async () => {
@@ -159,11 +161,12 @@
 				<div class="ingredientsDiv">
 					{#each ingredientIdArr as ingredientId, i}
 						<div>
-							<label
-								for="ingredient-{i}"
-								class="{getIngredientType(Number(ingredientId))}"
-								>{ingredientIdMap.get(ingredientId)}</label
-							>
+							<label for="ingredient-{i}"
+								>{ingredientIdMap.get(ingredientId)}
+								{#each getTypeArr(Number(ingredientId)) as type}
+									<b class={type}></b>
+								{/each}
+							</label>
 							<input id="ingredient-{i}" name="ingredient-{ingredientId}" type="checkbox" />
 						</div>
 					{/each}
@@ -273,13 +276,16 @@
 		display: none;
 	}
 
-	:global(label.main) {
+	:global(.main)::after {
+		content: '주';
 		background-color: rgb(230, 230, 255);
 	}
-	:global(label.condiment) {
+	:global(.condiment)::after {
+		content: '조';
 		background-color: rgb(255, 255, 200);
 	}
-	:global(label.spice) {
+	:global(.spice)::after {
+		content: '향';
 		background-color: rgb(255, 220, 220);
 	}
 </style>
