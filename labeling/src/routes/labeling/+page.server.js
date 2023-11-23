@@ -40,7 +40,7 @@ export const actions = {
 		if (ingredientType === 0) {
 			label.mainArr = dataArr;
 		} else if (ingredientType === 1) {
-			label.seasoningArr = dataArr;
+			label.condimentArr = dataArr;
 		} else {
 			label.spiceArr = dataArr;
 		}

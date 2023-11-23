@@ -4,11 +4,12 @@
 	export let data;
 	export let form;
 
-	const ingredientIdMap = new Map((JSON.parse(data.ingredients)));
-	const changedIdMap = new Map((JSON.parse(data.idMappings)));
+	const ingredientIdMap = new Map(JSON.parse(data.ingredients));
+	const changedIdMap = new Map(JSON.parse(data.idMappings));
 
 	let originalHTML = '';
 	let recipeId = 6900000;
+	let recipeLabel = {};
 	let ingredientType = '0';
 	let ingredientIdArr = [];
 
@@ -20,16 +21,23 @@
 	async function getRecipe(id) {
 		isLoading = true;
 
+		recipeId = id;
+
 		let res = await fetch(`/api?id=${id}`);
-		originalHTML = await res.text();
+		let data = JSON.parse(await res.text());
+
+		originalHTML = data.html;
+		recipeLabel = data.label;
 
 		if (originalHTML === '') {
 			await getRecipe(id + 1);
 		} else {
-			recipeId = id;
-
 			if (!preview()) {
-				await getRecipe(id + 1)
+				recipeTitle = '';
+				ingredientNameArr = [];
+				ingredientIdArr = [];
+				mainImg = '';
+				await getRecipe(id + 1);
 			}
 
 			isLoading = false;
@@ -41,8 +49,6 @@
 
 		recipeTitle = document.querySelector('.view2_summary > h3').outerHTML;
 
-		mainImg = document.getElementById('main_thumbs').outerHTML;
-
 		let ingredientHTMLArr = document.querySelectorAll(
 			'#divConfirmedMaterialArea li > a:first-child'
 		);
@@ -52,13 +58,19 @@
 			ingredientIdArr.push(a.getAttribute('href').split("'")[1]);
 		});
 
-		ingredientIdArr = ingredientIdArr.map(id => {
-			return changedIdMap.get(id)
-		});
+		let ingredientIdSet = new Set(
+			ingredientIdArr.map((id) => {
+				return changedIdMap.get(id);
+			})
+		);
 
-		if (ingredientIdArr.indexOf(undefined) != -1) {
-			return false
+		if (ingredientIdSet.has(undefined)) {
+			return false;
 		}
+
+		ingredientIdArr = Array(...ingredientIdSet);
+
+		mainImg = document.getElementById('main_thumbs').outerHTML;
 
 		ingredientNameArr = [...ingredientNameArr];
 
@@ -74,7 +86,6 @@
 	}
 
 	function onEnter(e) {
-		console.log(e)
 		if (e.key === 'Enter') {
 			if (!isStarted) {
 				startLabeling();
@@ -88,6 +99,25 @@
 		ingredientNameArr = [];
 		ingredientIdArr = [];
 		mainImg = '';
+	}
+
+	function getIngredientType(ingredientId) {
+		if (recipeLabel === null) {
+			return ''
+		}
+
+		let typeArr = [];
+		if (recipeLabel.mainArr.indexOf(ingredientId) !== -1) {
+			typeArr.push('main');
+		}
+		if (recipeLabel.spiceArr.indexOf(ingredientId) !== -1) {
+			typeArr.push('spice');
+		}
+		if (recipeLabel.condimentArr.indexOf(ingredientId) !== -1) {
+			typeArr.push('condiment');
+		}
+
+		return typeArr.join(' ')
 	}
 
 	onMount(async () => {
@@ -104,13 +134,19 @@
 <section id="mainSection">
 	<div id="labelingDiv">
 		{#if !isStarted}
-			<input id="recipeId" type="number" placeholder={recipeId} bind:value={startRecipeId}  on:keydown={onEnter}/>
+			<input
+				id="recipeId"
+				type="number"
+				placeholder={recipeId}
+				bind:value={startRecipeId}
+				on:keydown={onEnter}
+			/>
 			<select bind:value={ingredientType} on:keydown={onEnter}>
 				<option value="0" selected>주재료</option>
 				<option value="1">조미료</option>
 				<option value="2">향신료</option>
 			</select>
-			<button on:click={startLabeling}  on:keydown={onEnter}>시작하기</button>
+			<button on:click={startLabeling} on:keydown={onEnter}>시작하기</button>
 		{:else if isLoading}
 			<p><b>Loading...</b></p>
 		{:else}
@@ -121,10 +157,14 @@
 				<input type="number" readonly value={recipeId} name="recipeId" />
 				<hr />
 				<div class="ingredientsDiv">
-					{#each ingredientIdArr as ingredient, i}
+					{#each ingredientIdArr as ingredientId, i}
 						<div>
-							<label for="ingredient-{i}">{ingredientIdMap.get(ingredient)}</label>
-							<input id="ingredient-{i}" name="ingredient-{ingredient}" type="checkbox" />
+							<label
+								for="ingredient-{i}"
+								class="{getIngredientType(Number(ingredientId))}"
+								>{ingredientIdMap.get(ingredientId)}</label
+							>
+							<input id="ingredient-{i}" name="ingredient-{ingredientId}" type="checkbox" />
 						</div>
 					{/each}
 					<input
@@ -231,5 +271,15 @@
 
 	#originalDiv {
 		display: none;
+	}
+
+	:global(label.main) {
+		background-color: rgb(230, 230, 255);
+	}
+	:global(label.condiment) {
+		background-color: rgb(255, 255, 200);
+	}
+	:global(label.spice) {
+		background-color: rgb(255, 220, 220);
 	}
 </style>
