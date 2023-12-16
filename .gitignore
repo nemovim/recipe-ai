@@ -6,4 +6,5 @@ pyvenv.cfg
 /data-crawling/frequencyData
 /data-crawling/ingredientsData
 /data-crawling/recipeData
+*.csv
 *.zip
